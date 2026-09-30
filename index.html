@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Tetris Maple 7mo esc N °133</title>
+
+  <!-- Enlace al Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Configuración para pantalla completa e iconos (PWA) -->
+  <meta name="theme-color" content="#3498db">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tetris Maple">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/833/833316.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="https://cdn-icons-png.flaticon.com/512/833/833316.png">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f9;
+      text-align: center;
+      margin: 0;
+      padding: 10px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    h1 { margin: 10px 0; font-size: 22px; color: #2c3e50; }
+    button {
+      padding: 10px 20px;
+      margin-bottom: 15px;
+      font-weight: bold;
+      border-radius: 8px;
+      border: none;
+      background-color: #3498db;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(5, 42px);
+      grid-template-rows: repeat(6, 48px);
+      gap: 5px;
+      background-color: #80a070;
+      padding: 14px;
+      border-radius: 16px;
+      width: fit-content;
+      margin: 0 auto;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    .cell {
+      background-color: #638253;
+      border-radius: 50% / 60% 60% 40% 40%;
+      border: 2px inset rgba(0,0,0,0.2);
+      width: 42px;
+      height: 48px;
+      box-sizing: border-box;
+      cursor: pointer;
+    }
+    .pieces-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+      align-items: center;
+      padding: 15px;
+      background-color: #ffffff;
+      border-radius: 12px;
+      margin: 20px auto;
+      max-width: 360px;
+      min-height: 100px;
+    }
+    .piece {
+      display: grid;
+      gap: 5px;
+      cursor: grab;
+      touch-action: none;
+    }
+    .egg-block {
+      border-radius: 50% / 60% 60% 40% 40%;
+      width: 42px;
+      height: 48px;
+      box-sizing: border-box;
+      box-shadow: inset -2px -2px 4px rgba(0,0,0,0.2);
+    }
+
+    .win-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+    .win-box {
+      background: white;
+      padding: 25px 35px;
+      border-radius: 20px;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      animation: popIn 0.3s ease-out;
+    }
+    .win-box h2 {
+      font-size: 32px;
+      color: #2ecc71;
+      margin: 0 0 10px 0;
+    }
+    .win-box p {
+      font-size: 18px;
+      color: #333;
+      margin-bottom: 20px;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.5); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Tetris Maple 7mo esc N °133</h1>
+  <button id="btn-reset">Reiniciar Tablero</button>
+  
+  <div id="board" class="board"></div>
+  <div id="pieces-box" class="pieces-box"></div>
+
+  <div id="win-modal" class="win-overlay">
+    <div class="win-box">
+      <h2>¡GANASTE! 🎉</h2>
+      <p>Has completado todo el maple de huevos.</p>
+      <button id="btn-play-again" style="background-color: #2ecc71;">Jugar de nuevo</button>
+    </div>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('Service Worker registrado con éxito:', reg.scope))
+          .catch(err => console.log('Error al registrar Service Worker:', err));
+      });
+    }
+
+    const BOARD_COLS = 5;
+    const BOARD_ROWS = 6;
+    let occupiedCount = 0;
+
+    let allPieces = [];
+    let availablePieceIds = [];
+    let placedPiecesOnBoard = [];
+
+    let activePieceEl = null;
+
+    function initPieces() {
+      allPieces = [
+        { id: 0, color: '#ff9433', shape: [[1, 1], [1, 1]] },         
+        { id: 1, color: '#8b5fb8', shape: [[1, 1, 1], [0, 1, 0]] },   
+        { id: 2, color: '#e74c3c', shape: [[1, 0], [1, 0], [1, 1]] },   
+        { id: 3, color: '#2ecc71', shape: [[1, 1, 1, 1]] },           
+        { id: 4, color: '#f1c40f', shape: [[1, 1, 1]] },              
+        { id: 5, color: '#e8a7cb', shape: [[1, 1], [1, 0]] },         
+        { id: 6, color: '#1abc9c', shape: [[1, 1], [0, 1]] },         
+        { id: 7, color: '#9b59b6', shape: [[1, 1]] },                 
+        { id: 8, color: '#e67e22', shape: [[1, 1]] },                 
+        { id: 9, color: '#34495e', shape: [[1]] }                     
+      ];
+      availablePieceIds = allPieces.map(p => p.id);
+      placedPiecesOnBoard = [];
+    }
+
+    function createBoard() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+      occupiedCount = 0;
+      for (let i = 0; i < 30; i++) {
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        cell.dataset.index = i;
+        cell.addEventListener('click', handleRemovePieceFromBoard);
+        board.appendChild(cell);
+      }
+    }
+
+    function rotateMatrix(matrix) {
+      const rows = matrix.length;
+      const cols = matrix[0].length;
+      const rotated = Array.from({ length: cols }, () => Array(rows).fill(0));
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          rotated[c][rows - 1 - r] = matrix[r][c];
+        }
+      }
+      return rotated;
+    }
+
+    function renderPieces() {
+      const piecesBox = document.getElementById('pieces-box');
+      piecesBox.innerHTML = '';
+
+      if (availablePieceIds.length === 0 && occupiedCount < 30) {
+        piecesBox.innerHTML = '<p style="color:#777;">¡No hay más piezas!</p>';
+        return;
+      }
+
+      availablePieceIds.forEach((id) => {
+        const pieceData = allPieces.find(p => p.id === id);
+        const pieceElement = document.createElement('div');
+        pieceElement.classList.add('piece');
+
+        const rows = pieceData.shape.length;
+        const cols = pieceData.shape[0].length;
+        pieceElement.style.gridTemplateColumns = `repeat(${cols}, 42px)`;
+        pieceElement.style.gridTemplateRows = `repeat(${rows}, 48px)`;
+
+        pieceData.shape.forEach(row => {
+          row.forEach(cell => {
+            const block = document.createElement('div');
+            block.style.pointerEvents = 'none';
+            if (cell === 1) {
+              block.classList.add('egg-block');
+              block.style.backgroundColor = pieceData.color;
+            } else {
+              block.style.visibility = 'hidden';
+              block.style.width = '42px';
+              block.style.height = '48px';
+            }
+            pieceElement.appendChild(block);
+          });
+        });
+
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+
+        const handleStart = (clientX, clientY) => {
+          activePieceEl = pieceElement;
+          isDragging = false;
+          startX = clientX;
+          startY = clientY;
+          pieceElement.style.position = 'fixed';
+          pieceElement.style.zIndex = '1000';
+          movePiece(clientX, clientY);
+        };
+
+        const handleMove = (clientX, clientY) => {
+          if (!activePieceEl) return;
+          if (Math.abs(clientX - startX) > 5 || Math.abs(clientY - startY) > 5) {
+            isDragging = true;
+          }
+          movePiece(clientX, clientY);
+        };
+
+        const handleEnd = (clientX, clientY) => {
+          if (!activePieceEl) return;
+
+          if (!isDragging) {
+            resetPieceStyle(pieceElement);
+            pieceData.shape = rotateMatrix(pieceData.shape);
+            renderPieces();
+            activePieceEl = null;
+            return;
+          }
+
+          pieceElement.style.display = 'none';
+          const elementUnder = document.elementFromPoint(clientX, clientY);
+          pieceElement.style.display = 'grid';
+
+          const targetCell = elementUnder ? elementUnder.closest('.cell') : null;
+
+          if (targetCell) {
+            const targetIndex = parseInt(targetCell.dataset.index);
+            const startRow = Math.floor(targetIndex / BOARD_COLS);
+            const startCol = targetIndex % BOARD_COLS;
+
+            if (canPlacePiece(pieceData, startRow, startCol)) {
+              placePiece(pieceData, startRow, startCol);
+              availablePieceIds = availablePieceIds.filter(i => i !== pieceData.id);
+              renderPieces();
+              checkWin();
+            } else {
+              resetPieceStyle(pieceElement);
+            }
+          } else {
+            resetPieceStyle(pieceElement);
+          }
+
+          activePieceEl = null;
+        };
+
+        pieceElement.addEventListener('mousedown', (e) => {
+          handleStart(e.clientX, e.clientY);
+          const onMouseMove = (me) => handleMove(me.clientX, me.clientY);
+          const onMouseUp = (me) => {
+            handleEnd(me.clientX, me.clientY);
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+          };
+          window.addEventListener('mousemove', onMouseMove);
+          window.addEventListener('mouseup', onMouseUp);
+        });
+
+        pieceElement.addEventListener('touchstart', (e) => {
+          const touch = e.touches[0];
+          handleStart(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        pieceElement.addEventListener('touchmove', (e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          handleMove(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        pieceElement.addEventListener('touchend', (e) => {
+          const touch = e.changedTouches[0];
+          handleEnd(touch.clientX, touch.clientY);
+        });
+
+        piecesBox.appendChild(pieceElement);
+      });
+    }
+
+    function movePiece(x, y) {
+      if (activePieceEl) {
+        activePieceEl.style.left = `${x - 21}px`;
+        activePieceEl.style.top = `${y - 24}px`;
+      }
+    }
+
+    function resetPieceStyle(el) {
+      el.style.position = 'static';
+      el.style.zIndex = '1';
+      el.style.left = 'auto';
+      el.style.top = 'auto';
+    }
+
+    function canPlacePiece(piece, startRow, startCol) {
+      const board = document.getElementById('board');
+      const shape = piece.shape;
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[0].length; c++) {
+          if (shape[r][c] === 1) {
+            const boardRow = startRow + r;
+            const boardCol = startCol + c;
+
+            if (boardRow < 0 || boardRow >= BOARD_ROWS || boardCol < 0 || boardCol >= BOARD_COLS) {
+              return false;
+            }
+
+            const cellIndex = boardRow * BOARD_COLS + boardCol;
+            const cell = board.children[cellIndex];
+            if (cell.dataset.occupied === 'true') return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    function placePiece(piece, startRow, startCol) {
+      const board = document.getElementById('board');
+      const shape = piece.shape;
+      const cellsOccupied = [];
+
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[0].length; c++) {
+          if (shape[r][c] === 1) {
+            const boardRow = startRow + r;
+            const boardCol = startCol + c;
+            const cellIndex = boardRow * BOARD_COLS + boardCol;
+            const cell = board.children[cellIndex];
+
+            cell.style.backgroundColor = piece.color;
+            cell.dataset.occupied = 'true';
+            cell.dataset.pieceId = piece.id;
+            cellsOccupied.push(cellIndex);
+            occupiedCount++;
+          }
+        }
+      }
+
+      placedPiecesOnBoard.push({
+        pieceId: piece.id,
+        cells: cellsOccupied
+      });
+    }
+
+    function handleRemovePieceFromBoard(e) {
+      const cell = e.target.closest('.cell');
+      if (!cell || cell.dataset.occupied !== 'true') return;
+
+      const pieceIdToRemove = parseInt(cell.dataset.pieceId);
+      const placedIndex = placedPiecesOnBoard.findIndex(p => p.pieceId === pieceIdToRemove);
+
+      if (placedIndex !== -1) {
+        const pieceInfo = placedPiecesOnBoard[placedIndex];
+        const board = document.getElementById('board');
+
+        pieceInfo.cells.forEach(cellIndex => {
+          const c = board.children[cellIndex];
+          c.style.backgroundColor = '#638253';
+          delete c.dataset.occupied;
+          delete c.dataset.pieceId;
+          occupiedCount--;
+        });
+
+        placedPiecesOnBoard.splice(placedIndex, 1);
+        availablePieceIds.push(pieceIdToRemove);
+        renderPieces();
+      }
+    }
+
+    function checkWin() {
+      if (occupiedCount === 30) {
+        setTimeout(() => {
+          document.getElementById('win-modal').style.display = 'flex';
+        }, 150);
+      }
+    }
+
+    function resetGame() {
+      document.getElementById('win-modal').style.display = 'none';
+      initPieces();
+      createBoard();
+      renderPieces();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('btn-reset').addEventListener('click', resetGame);
+      document.getElementById('btn-play-again').addEventListener('click', resetGame);
+      resetGame();
+    });
+  </script>
+
+</body>
+</html>
